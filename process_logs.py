@@ -4,10 +4,9 @@ import csv
 
 def parse_srsran_log(file_path):
     """
-    Parses a srsRAN log file by generating data for the idle 'ue1'.
-    - Finds any row with traffic and labels it 'ue2'.
-    - For each 'ue2' row, it manufactures a corresponding 'ue1' row with zeroed-out metrics.
-    This ensures both UEs are represented in the final dataset at every time step.
+    Parses a srsRAN log file to extract data for the active UE ('ue2').
+    - Finds any row with traffic (non-zero DL bitrate) and labels it 'ue2'.
+    - Only 'ue2' data is extracted. Idle UE data is not generated.
     """
     metadata = {
         'ue1_distance_ft': None, 'ue2_distance_ft': None, 'gain_db': None,
@@ -77,17 +76,7 @@ def parse_srsran_log(file_path):
                         
                         data_rows.append(ue2_row)
 
-                        # --- MANUFACTURE THE UE1 (IDLE) ROW ---
-                        # Create a copy to use as a template
-                        ue1_row = list(ue2_row)
-                        ue1_row[1] = 'ue1' # Set identifier
-
-                        # Zero out all performance metrics from dl_cqi to ul_phr
-                        # These are indices 2 through 20
-                        for i in range(2, 21):
-                            ue1_row[i] = '0'
-
-                        data_rows.append(ue1_row)
+                        # --- MODIFICATION: The manufacturing of the 'ue1' row has been removed. ---
 
     return metadata, data_rows, table_headers
 
@@ -124,7 +113,7 @@ def process_directory(input_dir, output_dir):
 
 # --- Main Execution ---
 if __name__ == "__main__":
-    input_directory = "dataset/NoJammer"
+    input_directory = "dataset/Jammer"
     output_directory = "srsran_csv_output"
     if not os.path.exists(input_directory):
         print(f"Input directory '{input_directory}' not found.")
