@@ -1,1 +1,6 @@
-pip install pandas joblib torch scikit-learn seaborn numpy matplotlib
+joblib
+torch
+scikit-learn
+seaborn
+numpy
+matplotlib
