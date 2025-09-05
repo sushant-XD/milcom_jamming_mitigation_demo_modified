@@ -1,0 +1,49 @@
+venv/
+# Byte-compiled / optimized / compiled files
+__pycache__/
+*.pyc
+*.pyd
+*.pyo
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+env/
+venv/
+pip-wheel-metadata/
+dist/
+build/
+*.egg-info/
+.eggs/
+
+# Environments
+.env
+.flaskenv
+
+# Testing
+.pytest_cache/
+.coverage
+
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+*.bak
+*.swo
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Logs and databases
+*.log
+*.sqlite3
+db.sqlite3
+
+# Jupyter Notebook files
+.ipynb_checkpoints/
+
+# Miscellaneous
+tmp/
