@@ -11,6 +11,8 @@ from sklearn.preprocessing import RobustScaler
 from sklearn.metrics import confusion_matrix, classification_report
 import matplotlib.pyplot as plt
 import seaborn as sns
+import joblib
+import json
 
 # --- Configuration ---
 JAMMING_DATA_DIR = "jamming_processed_data"
@@ -110,7 +112,7 @@ if __name__ == "__main__":
     print(f"Max measured RSRP: {max_rsrp:.2f}. Using {overload_value:.2f} for 'ovl'.")
     temp_normal_clean = normal_df.copy(); temp_normal_clean['ul_rsrp'].replace('ovl', overload_value, inplace=True); temp_normal_clean['ul_rsrp'] = pd.to_numeric(temp_normal_clean['ul_rsrp'], errors='coerce'); temp_normal_clean['dl_cqi'] = pd.to_numeric(temp_normal_clean['dl_cqi'], errors='coerce'); temp_normal_clean.dropna(subset=['ul_rsrp', 'dl_cqi'], inplace=True)
     scaler_divergence = RobustScaler().fit(temp_normal_clean[['dl_cqi', 'ul_rsrp']])
-    
+    joblib.dump(scaler_divergence, "scaler_divergence.pth")
     for df in [normal_df, jammed_df]:
         df['ul_rsrp'].replace('ovl', overload_value, inplace=True); df['ul_rsrp'] = pd.to_numeric(df['ul_rsrp'], errors='coerce'); df['ul_rsrp'].ffill(inplace=True); df['ul_rsrp'].bfill(inplace=True); df['distance_ft'] = pd.to_numeric(df['distance_ft'], errors='coerce'); df['dl_cqi'] = pd.to_numeric(df['dl_cqi'], errors='coerce');
         df.dropna(subset=['distance_ft', 'dl_cqi', 'ul_rsrp'], inplace=True); df['distance_ft'] = df['distance_ft'].astype(int);
@@ -128,6 +130,7 @@ if __name__ == "__main__":
     model_ae = LSTMAutoencoder(input_size=len(FEATURES), sequence_len=SEQUENCE_LENGTH).to(device)
     criterion_ae = nn.MSELoss(); optimizer_ae = torch.optim.Adam(model_ae.parameters(), lr=LEARNING_RATE_AE)
     best_val_loss, epochs_no_improve = float('inf'), 0
+    joblib.dump(ae_scaler,"ae_scaler.pth")
     for epoch in range(EPOCHS):
         model_ae.train();
         for seq, _ in train_loader_ae:
@@ -147,6 +150,14 @@ if __name__ == "__main__":
         dist_errors = val_errors_ae[val_dist_ae == dist]
         if len(dist_errors) > 0: thresholds[dist] = np.percentile(dist_errors, THRESHOLD_PERCENTILE)
 
+    global_thres = str(global_threshold)
+    threshold_config = {
+        "global_threshold": global_thres,
+        #"per_distance": per_distance,
+    }
+    with open("threshold_config.json","w") as file:
+        json.dump(threshold_config,file,indent=4)
+
     # --- 3. Train the LSTM Classifier ---
     print("\n" + "="*80 + "\n=== TRAINING CLASSIFIER MODEL ===" + "\n" + "="*80 + "\n")
     cls_scaler = RobustScaler().fit(pd.concat([normal_df, jammed_df])[FEATURES_TO_SCALE])
@@ -161,6 +172,7 @@ if __name__ == "__main__":
     model_cls = LSTMClassifier(input_size=len(FEATURES)).to(device)
     criterion_cls = nn.BCEWithLogitsLoss(); optimizer_cls = torch.optim.Adam(model_cls.parameters(), lr=LEARNING_RATE_CLS)
     best_val_loss, epochs_no_improve = float('inf'), 0
+    joblib.dump(cls_scaler,"cls_scaler.pth")
     for epoch in range(EPOCHS):
         model_cls.train(); batch_losses = []
         for seq, labels in train_loader_cls: seq, labels = seq.to(device), labels.to(device); optimizer_cls.zero_grad(); outputs = model_cls(seq); loss = criterion_cls(outputs, labels); loss.backward(); optimizer_cls.step(); batch_losses.append(loss.item())
