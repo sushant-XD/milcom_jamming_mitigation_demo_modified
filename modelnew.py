@@ -150,14 +150,18 @@ if __name__ == "__main__":
         dist_errors = val_errors_ae[val_dist_ae == dist]
         if len(dist_errors) > 0: thresholds[dist] = np.percentile(dist_errors, THRESHOLD_PERCENTILE)
 
-    global_thres = str(global_threshold)
-    threshold_config = {
-        "global_threshold": global_thres,
-        #"per_distance": per_distance,
-    }
-    with open("threshold_config.json","w") as file:
-        json.dump(threshold_config,file,indent=4)
+    per_distance_thresholds = {str(k): float(v) for k, v in thresholds.items()}
 
+    threshold_config = {
+        "global_threshold": float(global_threshold),
+        "thresholds": per_distance_thresholds,
+    }
+
+    print("\n--- SAVING THRESHOLD CONFIGURATION ---")
+    print(json.dumps(threshold_config, indent=4))
+
+    with open("threshold_config.json", "w") as file:
+        json.dump(threshold_config, file, indent=4)
     # --- 3. Train the LSTM Classifier ---
     print("\n" + "="*80 + "\n=== TRAINING CLASSIFIER MODEL ===" + "\n" + "="*80 + "\n")
     cls_scaler = RobustScaler().fit(pd.concat([normal_df, jammed_df])[FEATURES_TO_SCALE])
