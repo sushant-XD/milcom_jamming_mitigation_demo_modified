@@ -39,7 +39,10 @@ class FeatureProcessor:
 
         self.distance_buffers[distance].append(data_point)
         buffer_df = pd.DataFrame(list(self.distance_buffers[distance]))
-
+        
+        if(data_point.get("dl_cqi") in [None, "0", "ovl"] or data_point.get("ul_rsrp") in [None, "0", "ovl"]):
+            return 
+        
         buffer_df["ul_rsrp"] = np.where(
             buffer_df["ul_rsrp"] == "ovl", self.overload_value, buffer_df["ul_rsrp"]
         )
