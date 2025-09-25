@@ -5,8 +5,7 @@ GNB_EXECUTABLE="gnb"
 GNB_PROCESS_NAME="gnb"
 
 # Config file paths
-INITIAL_GNB_CONFIG="/home/ntia/ran-tester-ue/configs/zmq/gnb_zmq.yaml"
-ANTIJAMMING_GNB_CONFIG="/home/ntia/ran-tester-ue/configs/zmq/gnb_zmq.yaml" #TODO: fix this 
+ANTIJAMMING_GNB_CONFIG="/home/ntia/ran-tester-ue/configs/uhd/gnb_uhd.yaml" 
 
 # --- Functions ---
 
@@ -23,7 +22,7 @@ start_gnb() {
         exit 1
     fi
     echo "Starting gNodeB with config: $CONFIG_FILE"
-    sudo nohup "$GNB_EXECUTABLE" -c "$CONFIG_FILE" &
+    gnome-terminal -- /bin/bash -c "sudo $GNB_EXECUTABLE -c $CONFIG_FILE; exec bash"
 }
 
 # --- Main Logic ---
@@ -33,6 +32,7 @@ COMMAND=$1
 case "$COMMAND" in
     restart_jamming)
         stop_gnb
+        sleep 6
         start_gnb "$ANTIJAMMING_GNB_CONFIG"
         echo "gNodeB restarted in anti-jamming mode."
         ;;

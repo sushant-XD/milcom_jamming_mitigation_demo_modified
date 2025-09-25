@@ -12,7 +12,7 @@ import os
 from modelnew import LSTMAutoencoder, LSTMClassifier
 
 # --- Constants & File Paths ---
-SEQUENCE_LENGTH = 10
+SEQUENCE_LENGTH = 5
 AUTOENCODER_DISTANCES = {30, 35}
 FEATURES = ["dl_cqi", "ul_rsrp", "cqi_diff", "cqi_rolling_std", "quality_divergence", "distance_ft"]
 FEATURES_TO_SCALE = ["dl_cqi", "ul_rsrp", "quality_divergence", "cqi_diff", "cqi_rolling_std"]
@@ -26,7 +26,7 @@ LOG_FILE_PATH = "../ran-tester-ue/gnb_session.log"
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {DEVICE}")
 
-SCRIPT_PATH_REL = "restart_script.sh"
+SCRIPT_PATH_REL = "./restart_script.sh"
 # Create a copy of the current environment
 my_env = os.environ.copy()
 
@@ -48,21 +48,10 @@ class FeatureProcessor:
         self.distance_buffers[distance].append(data_point)
         buffer_df = pd.DataFrame(list(self.distance_buffers[distance]))
         
-        if(data_point.get("dl_cqi") in [None, "0", "ovl"] or data_point.get("ul_rsrp") in [None, "0","ovl"]): 
-            return
-        
-        buffer_df["ul_rsrp"] = np.where(
-            buffer_df["ul_rsrp"] == "ovl", self.overload_value, buffer_df["ul_rsrp"]
-        )
-        buffer_df["ul_rsrp"] = np.where(
-            buffer_df["ul_rsrp"] == "n/a", self.overload_value, buffer_df["ul_rsrp"]
-        )
         buffer_df['ul_rsrp'] = pd.to_numeric(buffer_df['ul_rsrp'], errors="coerce")
         buffer_df["dl_cqi"] = pd.to_numeric(buffer_df["dl_cqi"], errors="coerce")
 
         buffer_df = buffer_df.copy()
-        buffer_df['ul_rsrp'] = buffer_df['ul_rsrp'].fillna(self.overload_value)
-        buffer_df['dl_cqi'] = buffer_df['dl_cqi'].fillna(0)
 
         if buffer_df[["dl_cqi", "ul_rsrp"]].isna().any().any():
             print("Warning: NaN values still present after preprocessing")
@@ -102,54 +91,69 @@ def load_artifacts():
     print("Artifacts loaded.")
     return autoencoder_model, classifier_model, ae_scaler, cls_scaler, divergence_scaler, threshold_config
 
+def parse_numeric_value(value_str):
+    s = str(value_str).lower().strip()
+    multiplier = 1
+    if s.endswith('k'):
+        multiplier = 1000
+        s = s[:-1]
+    elif s.endswith('m'):
+        multiplier = 1_000_000
+        s = s[:-1]
+    return int(float(s) * multiplier)
+
 def parse_srsran_log_line(line: str):
     """Parse srsRAN gNB log line with optimized regex"""
-    # Debug: print the line being parsed
-    print(f"Attempting to parse: {repr(line[:100])}")
-   
     data_pattern = re.compile(r"""
         ^\s*(?P<pci>\d+)\s+
-        (?P<rnti>\d+)\s*\|\s*
-        (?P<dl_cqi>\d+)\s+
-        (?P<dl_ri>[\d.]+)\s+
-        (?P<dl_mcs>\d+)\s+
-        (?P<dl_brate>\d+)\s+
-        (?P<dl_ok>\d+)\s+
-        (?P<dl_nok>\d+)\s+
+        (?P<rnti>\S+)\s*\|\s*
+        (?P<dl_cqi>\S+)\s+
+        (?P<dl_ri>\S+)\s+
+        (?P<dl_mcs>\S+)\s+
+        (?P<dl_brate>\S+)\s+
+        (?P<dl_ok>\S+)\s+
+        (?P<dl_nok>\S+)\s+
         (?P<dl_perc>\d+)%\s+
-        (?P<dl_bs>\d+)\s*\|\s*
+        (?P<dl_bs>\S+)\s*\|\s*
         (?P<pusch>\S+)\s+
         (?P<rsrp>\S+)\s+
-        (?P<ul_ri>\d+)\s+
-        (?P<ul_mcs>\d+)\s+
-        (?P<ul_brate>\d+)\s+
-        (?P<ul_ok>\d+)\s+
-        (?P<ul_nok>\d+)\s+
+        (?P<ul_ri>\S+)\s+
+        (?P<ul_mcs>\S+)\s+
+        (?P<ul_brate>\S+)\s+
+        (?P<ul_ok>\S+)\s+
+        (?P<ul_nok>\S+)\s+
         (?P<ul_perc>\d+)%\s+
-        (?P<bsr>\d+)\s+
+        (?P<bsr>\S+)\s+
         (?P<ta>\S+)\s+
         (?P<phr>\S+)
     """, re.VERBOSE)
     match = data_pattern.match(line)
     if not match:
-        print(f"No regex match for line: {line[:100]}...")
         return None
 
-    # Extract all named groups as dictionary
     data = match.groupdict()
 
-    # Optional: parse/convert some values
     try:
-        data['pci'] = int(data['pci'])
-        data['rnti'] = int(data['rnti'])
-        data['dl_cqi'] = int(data['dl_cqi'])
-        data['dl_ri'] = float(data['dl_ri'])
+        data['dl_cqi'] = 1 if str(data['dl_cqi']).lower() == 'n/a' else int(data['dl_cqi'])
+        data['pci'] = 1 if str(data['pci']).lower() == 'n/a' else int(data['pci'])
+        data['rnti'] = int(data['rnti'], 16)
+        data['dl_ri'] = 1.0 if str(data['dl_ri']).lower() == 'n/a' else float(data['dl_ri'])
         data['ul_ri'] = int(data['ul_ri'])
         data['ul_mcs'] = int(data['ul_mcs'])
-        data['bsr'] = int(data['bsr'])
+        data['bsr'] = parse_numeric_value(data['bsr'])
+        
+        # ### MODIFICATION 1: Parse RSRP to float or np.nan ###
+        # Instead of converting 'n/a' to 9 here, we use np.nan to signify a missing value
+        # which we will handle in the main loop logic.
+        rsrp_val = str(data['rsrp']).lower()
+        if rsrp_val in ('n/a', 'ovl'):
+            data['ul_rsrp'] = np.nan
+        else:
+            data['ul_rsrp'] = float(rsrp_val)
+        
         print(f"Data match found: {data}")
-    except ValueError as e:
-        print(f"Value conversion error: {e}")
+    except (ValueError, KeyError) as e:
+        print(f"Value conversion or key error: {e}")
         return None
 
     return data
@@ -160,22 +164,17 @@ class FastLogReader:
         self.buffer_size = buffer_size
         self.file_position = 0
         self.partial_line = ""
-        # Compiled ANSI escape sequence pattern
         self.ansi_pattern = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
         
     def clean_line(self, line):
-        """Fast line cleaning"""
         clean = self.ansi_pattern.sub('', line)
         return ''.join(c for c in clean if ord(c) >= 32 or c == '\n').strip()
 
     def read_new_lines(self):
-        """Generator that yields new lines as they're written to the file"""
-        # Wait for file to exist
         while not os.path.exists(self.log_file_path):
             time.sleep(0.1)
             
         with open(self.log_file_path, 'r', encoding='utf-8', errors='ignore') as log_file:
-            # Start from end if file already exists
             log_file.seek(0, 2)
             self.file_position = log_file.tell()
             
@@ -187,31 +186,27 @@ class FastLogReader:
                     new_data = log_file.read(self.buffer_size)
                     
                     if new_data:
-                        # Handle partial lines
                         full_data = self.partial_line + new_data
                         lines = full_data.split('\n')
                         self.partial_line = lines[-1]
                         
-                        # Process complete lines
                         for line in lines[:-1]:
                             cleaned_line = self.clean_line(line)
-                            if cleaned_line and len(cleaned_line) > 20:  # Skip short lines
+                            if cleaned_line and len(cleaned_line) > 20:
                                 yield cleaned_line
                         
                         self.file_position = log_file.tell()
                 
-                time.sleep(0.01)  # 10ms polling
+                time.sleep(0.01)
 
 def create_model_input(parsed_gnb_data):
-    """Convert parsed gNB data to model input format"""
     return {
         "dl_cqi": parsed_gnb_data.get("dl_cqi"),
         "ul_rsrp": parsed_gnb_data.get("ul_rsrp"),
-        "distance_ft": 30  # TODO: Make this configurable and/or check the value again
+        "distance_ft": 10
     }
 
 if __name__ == "__main__":
-    
     jamming_mitigation_active = False
     last_restart_time = 0
     COOLDOWN_PERIOD_SECONDS = 300
@@ -223,15 +218,36 @@ if __name__ == "__main__":
     feature_processor = FeatureProcessor(divergence_scaler=divergence_scaler)
     sequence_buffer = deque(maxlen=SEQUENCE_LENGTH)
     
-    # Initialize fast log reader (set start_from_beginning=True for testing)
+    # ### MODIFICATION 2: Add state counter for initialization ###
+    initial_rsrp_values_collected = 0
+    
     log_reader = FastLogReader(LOG_FILE_PATH)
     print("Starting real-time log processing...")
+
+    ANOMALY_DETECTED = False
+    
     for log_line in log_reader.read_new_lines():
         try:
-            # Parse the log line
             gnb_data = parse_srsran_log_line(log_line)
             if not gnb_data:
                 continue
+
+            # ### MODIFICATION 3: Implement warm-up logic ###
+            # Phase 1: Collect initial data points with valid RSRP
+            if initial_rsrp_values_collected < SEQUENCE_LENGTH:
+                # Check if ul_rsrp is a valid number (not NaN)
+                if 'ul_rsrp' in gnb_data and not np.isnan(gnb_data['ul_rsrp']):
+                    initial_rsrp_values_collected += 1
+                    print(f"Collected initial valid RSRP point ({initial_rsrp_values_collected}/{SEQUENCE_LENGTH})...")
+                else:
+                    # If RSRP is missing during initialization, skip this data point
+                    print("Waiting for a valid RSRP value to initialize the system...")
+                    continue
+            
+            # Phase 2: Operational mode. If RSRP is missing now, it's an anomaly.
+            # Convert NaN to the overload value (9.0) for the model.
+            if np.isnan(gnb_data['ul_rsrp']):
+                gnb_data['ul_rsrp'] = 9.0
 
             # Convert to model input format
             model_input = create_model_input(gnb_data)
@@ -242,17 +258,20 @@ if __name__ == "__main__":
                 continue
 
             sequence_buffer.append(processed_features)
+            
+            # Ensure we don't start predicting until the buffer is full
             if len(sequence_buffer) < SEQUENCE_LENGTH:
+                # This check also implicitly covers the initialization phase
+                print(f"Filling buffer... {len(sequence_buffer)}/{SEQUENCE_LENGTH}")
                 continue
 
-            # Prepare data for model inference
+            # --- The rest of the prediction logic remains the same ---
             sequence_list = list(sequence_buffer)
             current_distance = int(sequence_list[-1]["distance_ft"])
             features_df = pd.DataFrame(sequence_list)[FEATURES]
 
             with torch.no_grad():
                 if current_distance in AUTOENCODER_DISTANCES:
-                    # Autoencoder anomaly detection
                     scaled_df = features_df.copy()
                     scaled_df[FEATURES_TO_SCALE] = ae_scaler.transform(scaled_df[FEATURES_TO_SCALE])
                     
@@ -265,14 +284,12 @@ if __name__ == "__main__":
                         print(f"ANOMALY DETECTED at {current_distance}ft! Error: {reconstruction_error:.4f}")
                         if not jamming_mitigation_active:
                             print("==================Jamming detected! Triggering restart to anti-jamming config...===============")
-                            # Call the script to restart gNodeB
                             subprocess.run([SCRIPT_PATH_REL, "restart_jamming"])
-                            jamming_mitigation_active = True # to avoid restart all the time
+                            jamming_mitigation_active = True
                             last_restart_time = time.time()
                     else:
                         print(f"Normal at {current_distance}ft. Error: {reconstruction_error:.4f}")
                 else:
-                    # Classifier anomaly detection
                     scaled_df = features_df.copy()
                     scaled_df[FEATURES_TO_SCALE] = cls_scaler.transform(scaled_df[FEATURES_TO_SCALE])
                     
@@ -280,13 +297,12 @@ if __name__ == "__main__":
                     classifier_output = classifier_model(input_tensor)
                     anomaly_probability = torch.sigmoid(classifier_output).item()
                     
-                    if anomaly_probability > 0.5:
+                    if anomaly_probability > 0.8:
                         print(f"===========ANOMALY DETECTED at {current_distance}ft! Confidence: {anomaly_probability:.2f}==============")
                         if not jamming_mitigation_active:
                             print("Jamming detected! Triggering restart to anti-jamming config...")
-                            # Call the script to restart gNodeB
-                            subprocess.run(["./manage_gnb.sh", "restart_jamming"])
-                            jamming_mitigation_active = True # to avoid restart all the time
+                            subprocess.run([SCRIPT_PATH_REL, "restart_jamming"])
+                            jamming_mitigation_active = True
                             last_restart_time = time.time()
                     else:
                         print(f"Normal at {current_distance}ft. Confidence: {anomaly_probability:.2f}")
