@@ -22,7 +22,7 @@ AE_SCALER_FNAME = "ae_scaler.pth"
 CLS_SCALER_FNAME = "cls_scaler.pth"
 THRESHOLD_FNAME = "threshold_config.json"
 SCALER_DIVERGENCE_FNAME = "scaler_divergence.pth"
-LOG_FILE_PATH = "../ran-tester-ue/gnb_session.log"
+LOG_FILE_PATH = "./gnb_session.log"
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {DEVICE}")
 

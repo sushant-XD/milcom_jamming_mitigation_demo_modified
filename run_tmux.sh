@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# All-in-one foot/gnome-terminal + tmux 5G network launcher (4-pane quadrant layout)
 set -xeuo pipefail
 
 USER=${USER:-$(id -un)}
 
 CORE_DOCKER_PATH="/home/$USER/srsRAN_Project/docker"
+SCRIPTS_PATH="/home/$USER/milcom_jamming_mitigation_demo_modified"
 SCRIPTS_PATH="/home/$USER/milcom_jamming_mitigation_demo_modified"
 JAMMER_PATH="/home/$USER/jammer"
 
@@ -60,7 +60,7 @@ for cmd in "${required_cmds[@]}"; do
 done
 
 CMD_5GC='sudo docker compose up --build 5gc'
-CMD_GNB='sudo gnb -c gnb_uhd.yaml'
+CMD_GNB='script -f gnb_session.log; sudo gnb -c gnb_uhd.yaml'
 CMD_IPERF='set -x; sudo ./iperf_server.sh'
 CMD_AI='source ./.venv/bin/activate 2>/dev/null && python3 inference.py'
 CMD_JAMMER='sudo ./build/jammer --config configs/basic_jammer.yaml'

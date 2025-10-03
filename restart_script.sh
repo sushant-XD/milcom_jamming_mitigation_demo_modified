@@ -5,13 +5,13 @@ GNB_EXECUTABLE="gnb"
 GNB_PROCESS_NAME="gnb"
 
 # Config file paths
-ANTIJAMMING_GNB_CONFIG="/home/ntia/ran-tester-ue/configs/uhd/gnb_uhd.yaml" 
+ANTIJAMMING_GNB_CONFIG="/home/charles/ran-tester-ue/configs/uhd/gnb_uhd_alt.yaml" 
 
 # --- Functions ---
 
 stop_gnb() {
     echo "Stopping existing gNodeB processes..."
-    sudo pkill -f "$GNB_PROCESS_NAME"
+    sudo kill -9 $(ps aux | awk '/gnb/&&!/awk/&&!/script/{print $0}')
     sleep 2
 }
 
@@ -22,7 +22,7 @@ start_gnb() {
         exit 1
     fi
     echo "Starting gNodeB with config: $CONFIG_FILE"
-    gnome-terminal -- /bin/bash -c "sudo $GNB_EXECUTABLE -c $CONFIG_FILE; exec bash"
+    tmux send-keys -t "5g":0.2 "sudo gnb -c gnb_uhd_alt.yaml" C-m
 }
 
 # --- Main Logic ---
