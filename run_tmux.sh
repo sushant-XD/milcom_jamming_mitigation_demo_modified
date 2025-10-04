@@ -99,12 +99,7 @@ tmux send-keys -t "$TMUX_SESSION":0.3 "$CMD_IPERF" C-m
 # Ask tmux to balance layout (tiled should produce the 2x2 grid)
 tmux select-layout -t "$TMUX_SESSION" tiled || true
 
-# Attach the tmux session inside the requested terminal
-if [[ "$TERMINAL" == "foot" ]]; then
-    foot -T "$WINDOW_TITLE" bash -lc "tmux attach -t $TMUX_SESSION"
-else
-    gnome-terminal --title="$WINDOW_TITLE" -- bash -lc "tmux attach -t $TMUX_SESSION"
-fi
+tmux attach -t "$TMUX_SESSION"
 
 exit 0
 
